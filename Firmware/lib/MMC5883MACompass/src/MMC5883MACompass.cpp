@@ -87,18 +87,46 @@ void MMC5883MACompass::setSmoothing(byte n,bool adv){
 
 void MMC5883MACompass::calibrate(){
     clearCalibration();
-    long minv[3]={ 65000,65000,65000};
-    long maxv[3]={-65000,-65000,-65000};
-    unsigned long t0=millis();
-    while(millis()-t0<10000){
-        read();
-        for(int i=0;i<3;++i){
-            if(_vRaw[i]<minv[i]) minv[i]=_vRaw[i];
-            if(_vRaw[i]>maxv[i]) maxv[i]=_vRaw[i];
-        }
-        delay(50);
-    }
-    setCalibration(minv[0],maxv[0],minv[1],maxv[1],minv[2],maxv[2]);
+  int calibrationData[3][2] = {{32767, -32768}, {32767, -32768}, {32767, -32768}};
+
+  // Prime the values
+  read();
+  int x = calibrationData[0][0] = calibrationData[0][1] = getX();
+  int y = calibrationData[1][0] = calibrationData[1][1] = getY();
+  int z = calibrationData[2][0] = calibrationData[2][1] = getZ();
+
+  unsigned long startTime = millis();
+  while ((millis() - startTime) < 10000) {
+    _performSet();
+    read();
+    int x_set = getX();
+    int y_set = getY();
+    int z_set = getZ();
+
+    _performReset();
+    read();
+    int x_reset = getX();
+    int y_reset = getY();
+    int z_reset = getZ();
+
+    // Average SET and RESET measurements to remove offset
+    x = (x_set + x_reset) / 2;
+    y = (y_set + y_reset) / 2;
+    z = (z_set + z_reset) / 2;
+
+    if (x < calibrationData[0][0]) calibrationData[0][0] = x;
+    if (x > calibrationData[0][1]) calibrationData[0][1] = x;
+    if (y < calibrationData[1][0]) calibrationData[1][0] = y;
+    if (y > calibrationData[1][1]) calibrationData[1][1] = y;
+    if (z < calibrationData[2][0]) calibrationData[2][0] = z;
+    if (z > calibrationData[2][1]) calibrationData[2][1] = z;
+
+    delay(10); // Allow sensor to stabilize
+  }
+
+  setCalibration(calibrationData[0][0], calibrationData[0][1],
+                 calibrationData[1][0], calibrationData[1][1],
+                 calibrationData[2][0], calibrationData[2][1]);
 }
 
 void MMC5883MACompass::setCalibration(int xmin,int xmax,int ymin,int ymax,int zmin,int zmax){
