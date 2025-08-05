@@ -24,6 +24,9 @@ public:
     void calibrate();
     /** 直接设置校准范围 */
     void setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max);
+	void setCalibrationOffsets(float x_offset, float y_offset, float z_offset);
+	void setCalibrationScales(float x_scale, float y_scale, float z_scale);
+    void clearCalibration();
     /** 读取最新数据并更新 _vCalibrated */
     void read();
     /** 读取芯片ID */
