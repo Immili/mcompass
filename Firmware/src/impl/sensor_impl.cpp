@@ -115,6 +115,7 @@ void sensor::calibrate() {
  */
 
 int sensor::getAzimuth() {
+  int azimuth0 = azimuth;
   if (nullptr == magneticSensor) {
     return 0;
   }
@@ -125,22 +126,25 @@ int sensor::getAzimuth() {
   case SensorModel::QMC5883P: {
     // QMC5883P的方位角需要特殊处理,他的Y轴和QMC5883L的Y轴是反向的
     // 需要将Y轴的值取反, 并且坐标相对于QMC5883L需要旋转90度
-    if (azimuth >= 360) {
-      azimuth -= 360;
+    if (azimuth0 >= 360) {
+      azimuth0 -= 360;
     }
     break;
   }
   case SensorModel::QMC5883L: {
-    azimuth = 360 - azimuth; // 将方位角转换为0-360度范围
+    azimuth0 = 360 - azimuth0; // 将方位角转换为0-360度范围
   }
     case SensorModel::MMC5883MA: {
     ESP_LOGI(TAG, "RAW  Az:%d",azimuth);
-    azimuth = 360-azimuth ; // 将方位角转换为0-360度范围
+    azimuth0 = 180-azimuth0 ; // 将方位角转换为0-360度范围
+    if (azimuth0<0){
+      azimuth0 = azimuth0+360;
+    }    
   }
   default:
     break;
   }
-  return azimuth;
+  return azimuth0;
 }
 
 bool sensor::available() { return nullptr != magneticSensor; }
