@@ -149,25 +149,7 @@ int MMC5883MACompass::getX(){return _get(0);}
 int MMC5883MACompass::getY(){return _get(1);} 
 int MMC5883MACompass::getZ(){return _get(2);} 
 
-int MMC5883MACompass::getAzimuth(){
-    static int lastAz = 0;
 
-    /* 先取得一次最新数值，方便调试时也能看到早退分支 */
-    int x = getX();
-    int y = getY();
-    int z = getZ();
-
-    /* 每次都打印原始值和当前(或上一次)角度 */
-    ESP_LOGI(LOG_TAG,"RAW  X:%d  Y:%d  Z:%d   Az:%d", x, y, z, lastAz);
-
-    /* 死区：当 X 轴绝对值小于 40 LSB (~10 mG) 时直接返回上一角度，防抖动 */
-    if (abs(x) < 40) return lastAz;
-
-    float ang = atan2(y, x) * 180.0f / PI + _magDeclDeg;
-    if (ang < 0) ang += 360;
-    lastAz = int(ang + 0.5f) % 360;
-    return lastAz;
-}
 
 byte MMC5883MACompass::getBearing(int az){return byte(((az+11)/22)%16);} 
 
