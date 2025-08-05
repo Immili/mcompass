@@ -150,10 +150,10 @@ int MMC5883MACompass::getAzimuth(){
     static int lastAz = 0;
     // 死区：当 X 轴绝对值小于 40 LSB (~10 mG) 时，保持上一角度
     if (abs(getX()) < 40) return lastAz;
-
     float ang=atan2(getY(),getX())*180.0f/PI+_magDeclDeg;
     if(ang<0) ang+=360;
     lastAz = int(ang+0.5f)%360;
+    Serial.printf("RAW  X:%6d  Y:%6d  Z:%6d   Az:%3d°\n",getX(),getY(), getZ(),lastAz);
     return lastAz;
 }
 
