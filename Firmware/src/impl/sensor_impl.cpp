@@ -136,9 +136,7 @@ int sensor::getAzimuth() {
     case SensorModel::MMC5883MA: {
     ESP_LOGI(TAG, "RAW  Az:%d",azimuth);
     azimuth = 360-azimuth ; // 将方位角转换为0-360度范围
-
   }
-    }
   default:
     break;
   }
