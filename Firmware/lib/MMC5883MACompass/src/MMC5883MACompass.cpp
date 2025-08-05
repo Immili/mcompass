@@ -54,7 +54,47 @@ void MMC5883MACompass::setSmoothing(byte steps, bool adv) {
 }
 
 void MMC5883MACompass::calibrate() {
-    // 用户可实现SET/RESET校准流程，在校准过程中多次read()
+      clearCalibration();
+  long calibrationData[3][2] = {
+      {65000, -65000}, {65000, -65000}, {65000, -65000}};
+  long x = calibrationData[0][0] = calibrationData[0][1] = getX();
+  long y = calibrationData[1][0] = calibrationData[1][1] = getY();
+  long z = calibrationData[2][0] = calibrationData[2][1] = getZ();
+
+  unsigned long startTime = millis();
+
+  while ((millis() - startTime) < 10000) {
+    read();
+
+    x = getX();
+    y = getY();
+    z = getZ();
+
+    if (x < calibrationData[0][0]) {
+      calibrationData[0][0] = x;
+    }
+    if (x > calibrationData[0][1]) {
+      calibrationData[0][1] = x;
+    }
+
+    if (y < calibrationData[1][0]) {
+      calibrationData[1][0] = y;
+    }
+    if (y > calibrationData[1][1]) {
+      calibrationData[1][1] = y;
+    }
+
+    if (z < calibrationData[2][0]) {
+      calibrationData[2][0] = z;
+    }
+    if (z > calibrationData[2][1]) {
+      calibrationData[2][1] = z;
+    }
+  }
+
+  setCalibration(calibrationData[0][0], calibrationData[0][1],
+                 calibrationData[1][0], calibrationData[1][1],
+                 calibrationData[2][0], calibrationData[2][1]);
 }
 
 void MMC5883MACompass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max) {
