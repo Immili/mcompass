@@ -3,6 +3,17 @@
 #include <Wire.h>
 #include <Arduino.h>
 
+constexpr byte REG_DATA_X_L = 0x00;   // 连续 6 字节 X_L…Z_H
+constexpr byte REG_STATUS   = 0x07;   // bit0 = Meas_Done
+constexpr byte REG_CTRL0    = 0x08;   // TM_M / SET / RESET / BW
+constexpr byte REG_CTRL2    = 0x0A;   // Soft‑reset
+constexpr byte REG_PRODUCT  = 0x2F;   // 0x0C
+
+/* 控制位 */
+constexpr byte CTRL0_TM_M   = 0x01;
+constexpr byte CTRL0_SET    = 0x08;
+constexpr byte CTRL0_RESET  = 0x10;
+
 // 16向罗盘方向字典
 const char MMC5883MACompass::_bearings[16][3] = {
     {' ', ' ', 'N'}, {' ', 'N', 'N'}, {'N', 'N', 'E'}, {' ', 'N', 'E'},
@@ -14,14 +25,20 @@ const char MMC5883MACompass::_bearings[16][3] = {
 MMC5883MACompass::MMC5883MACompass() {}
 
 void MMC5883MACompass::init() {
-    Wire.begin();
+   Wire.begin();
     // 软件复位
     _writeReg(0x09, 0x80);
     delay(5); // ≥5ms
+
     // 设置输出数据率400Hz (CR1 BW=10)
     _writeReg(0x09, 0x02);
+
     // 设置连续测量模式 CR0 MODE=01
     _writeReg(0x08, 0x01);
+
+    // —— 新增：开启连续测量频率 CM_Freq = 1 → 14Hz —— 
+    _writeReg(0x0A, 0x01);
+
     // 执行去偏置脉冲
     _performSet();
     _performReset();
@@ -111,9 +128,21 @@ void MMC5883MACompass::setCalibration(int x_min, int x_max, int y_min, int y_max
 }
 
 void MMC5883MACompass::read() {
-    // 读取寄存器0x00-0x05
+    // —— 1. 等待一次测量完成 —— 
+    uint8_t status = 0;
+    do {
+        Wire.beginTransmission(_ADDR);
+        Wire.write(REG_STATUS);
+        Wire.endTransmission();
+        Wire.requestFrom(_ADDR, (byte)1);
+        if (Wire.available()) {
+            status = Wire.read();
+        }
+    } while (!(status & 0x01));
+
+    // —— 2. 读取 0x00–0x05 的 6 字节原始磁场数据 —— 
     Wire.beginTransmission(_ADDR);
-    Wire.write((byte)0x00);
+    Wire.write(REG_DATA_X_L);
     if (Wire.endTransmission() == 0 && Wire.requestFrom(_ADDR, (byte)6) == 6) {
         _vRaw[0] = (int16_t)(Wire.read() | (Wire.read() << 8));
         _vRaw[1] = (int16_t)(Wire.read() | (Wire.read() << 8));
