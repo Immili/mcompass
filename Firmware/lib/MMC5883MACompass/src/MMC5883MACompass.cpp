@@ -97,6 +97,11 @@ void MMC5883MACompass::calibrate() {
                  calibrationData[2][0], calibrationData[2][1]);
 }
 
+void MMC5883MACompass::clearCalibration() {
+  setCalibrationOffsets(0., 0., 0.);
+  setCalibrationScales(1., 1., 1.);
+}
+
 void MMC5883MACompass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max) {
     _offset[0] = (x_max + x_min) / 2.0;
     _offset[1] = (y_max + y_min) / 2.0;
