@@ -54,49 +54,48 @@ void MMC5883MACompass::setSmoothing(byte steps, bool adv) {
 }
 
 void MMC5883MACompass::calibrate() {
-      clearCalibration();
-  long calibrationData[3][2] = {
-      {65000, -65000}, {65000, -65000}, {65000, -65000}};
-  long x = calibrationData[0][0] = calibrationData[0][1] = getX();
-  long y = calibrationData[1][0] = calibrationData[1][1] = getY();
-  long z = calibrationData[2][0] = calibrationData[2][1] = getZ();
+  clearCalibration();
+  int calibrationData[3][2] = {{32767, -32768}, {32767, -32768}, {32767, -32768}};
+
+  // Prime the values
+  read();
+  int x = calibrationData[0][0] = calibrationData[0][1] = getX();
+  int y = calibrationData[1][0] = calibrationData[1][1] = getY();
+  int z = calibrationData[2][0] = calibrationData[2][1] = getZ();
 
   unsigned long startTime = millis();
-
   while ((millis() - startTime) < 10000) {
+    _performSet();
     read();
+    int x_set = getX();
+    int y_set = getY();
+    int z_set = getZ();
 
-    x = getX();
-    y = getY();
-    z = getZ();
+    _performReset();
+    read();
+    int x_reset = getX();
+    int y_reset = getY();
+    int z_reset = getZ();
 
-    if (x < calibrationData[0][0]) {
-      calibrationData[0][0] = x;
-    }
-    if (x > calibrationData[0][1]) {
-      calibrationData[0][1] = x;
-    }
+    // Average SET and RESET measurements to remove offset
+    x = (x_set + x_reset) / 2;
+    y = (y_set + y_reset) / 2;
+    z = (z_set + z_reset) / 2;
 
-    if (y < calibrationData[1][0]) {
-      calibrationData[1][0] = y;
-    }
-    if (y > calibrationData[1][1]) {
-      calibrationData[1][1] = y;
-    }
+    if (x < calibrationData[0][0]) calibrationData[0][0] = x;
+    if (x > calibrationData[0][1]) calibrationData[0][1] = x;
+    if (y < calibrationData[1][0]) calibrationData[1][0] = y;
+    if (y > calibrationData[1][1]) calibrationData[1][1] = y;
+    if (z < calibrationData[2][0]) calibrationData[2][0] = z;
+    if (z > calibrationData[2][1]) calibrationData[2][1] = z;
 
-    if (z < calibrationData[2][0]) {
-      calibrationData[2][0] = z;
-    }
-    if (z > calibrationData[2][1]) {
-      calibrationData[2][1] = z;
-    }
+    delay(10); // Allow sensor to stabilize
   }
 
   setCalibration(calibrationData[0][0], calibrationData[0][1],
                  calibrationData[1][0], calibrationData[1][1],
                  calibrationData[2][0], calibrationData[2][1]);
 }
-
 void MMC5883MACompass::clearCalibration() {
   setCalibrationOffsets(0., 0., 0.);
   setCalibrationScales(1., 1., 1.);
