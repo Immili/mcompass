@@ -1,6 +1,7 @@
 #include "MMC5883MACompass.h"
 #include <Wire.h>
 #include <math.h>
+#include "esp_log.h"          // 为 ESP_LOGx 宏引入头文件
 
 /* 为静态 constexpr 数组分配存储 */
 constexpr char MMC5883MACompass::_bearings[16][3];
@@ -19,6 +20,8 @@ constexpr byte CTRL0_SET   = 0x08;
 constexpr byte CTRL0_RESET = 0x10;
 
 /******************** 构造与初始化 ************************/ 
+static const char *LOG_TAG = "MMC5883MA";
+
 MMC5883MACompass::MMC5883MACompass(){}
 
 void MMC5883MACompass::init(){
@@ -148,15 +151,21 @@ int MMC5883MACompass::getZ(){return _get(2);}
 
 int MMC5883MACompass::getAzimuth(){
     static int lastAz = 0;
-    // 死区：当 X 轴绝对值小于 40 LSB (~10 mG) 时，保持上一角度
-    float X=getX();
-    float Y=getY();
-    float Z=getZ();
-    if (abs(getX()) < 40) return lastAz;
-    float ang=atan2(getY(),getX())*180.0f/PI+_magDeclDeg;
-    if(ang<0) ang+=360;
-    lastAz = int(ang+0.5f)%360;
-    Serial.printf("RAW  X:%6d  Y:%6d  Z:%6d   Az:%3d°\n",X,Y, Z,lastAz);
+
+    /* 先取得一次最新数值，方便调试时也能看到早退分支 */
+    int x = getX();
+    int y = getY();
+    int z = getZ();
+
+    /* 每次都打印原始值和当前(或上一次)角度 */
+    ESP_LOGI(LOG_TAG,"RAW  X:%d  Y:%d  Z:%d   Az:%d", x, y, z, lastAz);
+
+    /* 死区：当 X 轴绝对值小于 40 LSB (~10 mG) 时直接返回上一角度，防抖动 */
+    if (abs(x) < 40) return lastAz;
+
+    float ang = atan2(y, x) * 180.0f / PI + _magDeclDeg;
+    if (ang < 0) ang += 360;
+    lastAz = int(ang + 0.5f) % 360;
     return lastAz;
 }
 
