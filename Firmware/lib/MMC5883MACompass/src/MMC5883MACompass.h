@@ -39,6 +39,7 @@ public:
     /** 获取校准比例 */
     float getCalibrationScale(byte idx);
     /** 获取X/Y/Z轴当前值 */
+    void clearCalibration();
     int getX();
     int getY();
     int getZ();
