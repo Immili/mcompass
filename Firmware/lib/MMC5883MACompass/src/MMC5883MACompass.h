@@ -5,51 +5,55 @@
 #include "Wire.h"
 
 /*
- * 兼容层：类名现改为 MMC5883MACompass
- * 内部针对 MMC5883MA（I²C 0x30、±8 G、0.25 mG/LSB）
+ *  MMC5883MA 磁力计驱动（单文件库）
+ *  ————————————————————————————————
+ *  I²C 地址: 0x30
+ *  量程   : ±8 G，0.25 mG/LSB
  */
 class MMC5883MACompass {
 public:
     MMC5883MACompass();
 
     /* ---------- 初始化与配置 ---------- */
-    void init();                          // I²C begin + 软件复位
-    void setADDR(byte b);                 // 如需修改默认地址 0x30
+    void init();                                  // I²C begin + Soft‑reset
+    void setADDR(byte addr);                      // 如需修改默认地址 0x30
+    void setMode(byte mode, byte odr = 0x04);     // mode: 0=suspend 1=cont 2=single
+    void setReset();                              // 再次软件复位
     void setMagneticDeclination(int deg, uint8_t minutes = 0);
 
     /* ---------- 数据读取 ---------- */
-    void read();                          // 触发一次测量并更新内部缓存
+    void read();                                  // SET→A RESET→B (A‑B)/2
     int  getX();
     int  getY();
     int  getZ();
-    int  getAzimuth();                    // 0‑359°，已加磁偏角
-    byte getBearing(int azimuth);
-    void getDirection(char *buf, int azimuth);
+    int  getAzimuth();                            // 0‑359°
+    byte getBearing(int azimuth);                 // 16 方位索引
+    void getDirection(char *buf, int azimuth);    // 『N』『E』…
 
     /* ---------- 校准与滤波 ---------- */
-    void calibrate();                     // 旋转 10 s 自动采集极值
+    void calibrate();                             // 旋转 10 s 自动采集极值
     void setCalibration(int xmin,int xmax,int ymin,int ymax,int zmin,int zmax);
     void setCalibrationOffsets(float x_off,float y_off,float z_off);
-    void setCalibrationScales(float x_s,float y_s,float z_s);
+    void setCalibrationScales (float x_s,float y_s,float z_s);
     float getCalibrationOffset(uint8_t idx);
-    float getCalibrationScale(uint8_t idx);
+    float getCalibrationScale (uint8_t idx);
     void  clearCalibration();
     void  setSmoothing(byte steps = 5, bool advanced = false);
 
     /* ---------- 调试 ---------- */
-    char chipID();                        // 读 0x2F，应为 0x0C
+    char chipID();                                // 读 0x2F，应为 0x0C
 
 private:
-    /* 寄存器写助手 */
+    /* I²C 辅助 */
     void _writeReg(byte reg, byte val);
 
     /* 内部工具 */
     int  _get(int idx);
-    void _smoothing();
     void _applyCalibration();
+    void _smoothing();
 
     /* 常量 & 状态 */
-    static constexpr byte DEFAULT_ADDR = 0x30;   // MMC5883MA 7‑bit 地址
+    static constexpr byte DEFAULT_ADDR = 0x30;    // MMC5883MA 7‑bit 地址
     byte _ADDR = DEFAULT_ADDR;
 
     /* 校准 & 滤波 */
@@ -77,4 +81,4 @@ private:
     };
 };
 
-#endif // MMC5883MA_COMPASS
+#endif /* MMC5883MA_COMPASS */
