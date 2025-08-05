@@ -115,13 +115,12 @@ void sensor::calibrate() {
  */
 
 int sensor::getAzimuth() {
-  int azimuth0 = azimuth;
   if (nullptr == magneticSensor) {
     return 0;
   }
   magneticSensor->read();
   int azimuth = magneticSensor->getAzimuth();
-
+  int azimuth0 = azimuth;
   switch (sm) {
   case SensorModel::QMC5883P: {
     // QMC5883P的方位角需要特殊处理,他的Y轴和QMC5883L的Y轴是反向的
