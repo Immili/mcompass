@@ -1,73 +1,80 @@
-// 文件: MMC5883MACompass.h
-#ifndef MMC5883MA_COMPASS_H
-#define MMC5883MA_COMPASS_H
+#ifndef MMC5883MA_COMPASS
+#define MMC5883MA_COMPASS
 
 #include "Arduino.h"
-#include <Wire.h>
+#include "Wire.h"
 
+/*
+ * 兼容层：类名现改为 MMC5883MACompass
+ * 内部针对 MMC5883MA（I²C 0x30、±8 G、0.25 mG/LSB）
+ */
 class MMC5883MACompass {
 public:
     MMC5883MACompass();
-    /** 初始化: 软件复位, 设置400Hz ODR, 连续测量模式, 执行SET/RESET */
-    void init();
-    /** 软件复位 */
-    void setReset();
-    /** 修改I2C地址 */
-    void setADDR(byte addr);
-    /** 设置模式和输出数据率 */
-    void setMode(byte mode, byte odr);
-    /** 设置磁偏角 */
-    void setMagneticDeclination(int degrees, uint8_t minutes);
-    /** 设置数据平滑 */
-    void setSmoothing(byte steps, bool adv);
-    /** 用户校准入口 */
-    void calibrate();
-    /** 直接设置校准范围 */
-    void setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max);
-    /** 读取最新数据并更新 _vCalibrated */
-    bool read();
-    /** 读取芯片ID */
-    char chipID();
-    /** 获取方位角（0-359） */
-    int getAzimuth();
-    /** 获取16向罗盘索引 */
+
+    /* ---------- 初始化与配置 ---------- */
+    void init();                          // I²C begin + 软件复位
+    void setADDR(byte b);                 // 如需修改默认地址 0x30
+    void setMagneticDeclination(int deg, uint8_t minutes = 0);
+
+    /* ---------- 数据读取 ---------- */
+    void read();                          // 触发一次测量并更新内部缓存
+    int  getX();
+    int  getY();
+    int  getZ();
+    int  getAzimuth();                    // 0‑359°，已加磁偏角
     byte getBearing(int azimuth);
-    /** 获取方向字符串 */
     void getDirection(char *buf, int azimuth);
-    /** 获取校准偏移 */
-    float getCalibrationOffset(byte idx);
-    /** 获取校准比例 */
-    float getCalibrationScale(byte idx);
-    /** 获取X/Y/Z轴当前值 */
-    void clearCalibration();
-    void setCalibrationOffsets(float x_offset, float y_offset, float z_offset);
-    void setCalibrationScales(float x_scale, float y_scale, float z_scale);
-    int getX();
-    int getY();
-    int getZ();
+
+    /* ---------- 校准与滤波 ---------- */
+    void calibrate();                     // 旋转 10 s 自动采集极值
+    void setCalibration(int xmin,int xmax,int ymin,int ymax,int zmin,int zmax);
+    void setCalibrationOffsets(float x_off,float y_off,float z_off);
+    void setCalibrationScales(float x_s,float y_s,float z_s);
+    float getCalibrationOffset(uint8_t idx);
+    float getCalibrationScale(uint8_t idx);
+    void  clearCalibration();
+    void  setSmoothing(byte steps = 5, bool advanced = false);
+
+    /* ---------- 调试 ---------- */
+    char chipID();                        // 读 0x2F，应为 0x0C
 
 private:
-    byte _ADDR = 0x30;
-    float _magneticDeclinationDegrees = 0;
-    bool _smoothUse = false;
-    byte _smoothSteps = 5;
-    bool _smoothAdvanced = false;
-    int _vRaw[3] = {0,0,0};
-    int _vHistory[10][3];
-    int _vScan = 0;
-    long _vTotals[3] = {0,0,0};
-    int _vSmooth[3] = {0,0,0};
-    float _offset[3] = {0.0,0.0,0.0};
-    float _scale[3]  = {1.0,1.0,1.0};
-    int _vCalibrated[3] = {0,0,0};
-    static const char _bearings[16][3];
+    /* 寄存器写助手 */
     void _writeReg(byte reg, byte val);
-    void _performSet();
-    void _performReset();
-    void _applyCalibration();
+
+    /* 内部工具 */
+    int  _get(int idx);
     void _smoothing();
-    uint8_t _readStatus();
-    void    _burstRead(int16_t v[3]);
+    void _applyCalibration();
+
+    /* 常量 & 状态 */
+    static constexpr byte DEFAULT_ADDR = 0x30;   // MMC5883MA 7‑bit 地址
+    byte _ADDR = DEFAULT_ADDR;
+
+    /* 校准 & 滤波 */
+    float _magDeclDeg = 0;
+    bool  _useSmooth  = false;
+    byte  _smoothN    = 5;
+    bool  _smoothAdv  = false;
+    float _offset[3]  = {0,0,0};
+    float _scale [3]  = {1,1,1};
+
+    /* 数据缓冲 */
+    int   _vRaw [3]   = {0,0,0};
+    int   _vCal [3]   = {0,0,0};
+    int   _vSmooth[3] = {0,0,0};
+    long  _vTotals[3] = {0,0,0};
+    int   _vHist [10][3] {};
+    byte  _vScan = 0;
+
+    /* 16 方位字符表 */
+    static constexpr char _bearings[16][3] = {
+        {' ',' ','N'}, {'N','N','E'}, {' ','N','E'}, {'E','N','E'},
+        {' ',' ','E'}, {'E','S','E'}, {' ','S','E'}, {'S','S','E'},
+        {' ',' ','S'}, {'S','S','W'}, {' ','S','W'}, {'W','S','W'},
+        {' ',' ','W'}, {'W','N','W'}, {' ','N','W'}, {'N','N','W'}
+    };
 };
 
-#endif // MMC5883MA_COMPASS_H
+#endif // MMC5883MA_COMPASS
