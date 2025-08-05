@@ -131,6 +131,7 @@ int sensor::getAzimuth() {
     break;
   }
   case SensorModel::QMC5883L: {
+    Serial.printf("RAWAz:%3d°\n",azimuth);
     azimuth = 360 - azimuth; // 将方位角转换为0-360度范围
   }
     case SensorModel::MMC5883MA: {
