@@ -165,6 +165,20 @@ void MMC5883MACompass::_writeReg(byte r, byte v) {
     Wire.write(v);
     Wire.endTransmission();
 }
+void MMC5883MACompass::setCalibrationOffsets(float x_offset, float y_offset, float z_offset) {
+  _offset[0] = x_offset;
+  _offset[1] = y_offset;
+  _offset[2] = z_offset;
+}
+
+/**
+ * Set Calibration Scales
+ */
+void MMC5883MACompass::setCalibrationScales(float x_scale, float y_scale, float z_scale) {
+  _scale[0] = x_scale;
+  _scale[1] = y_scale;
+  _scale[2] = z_scale;
+}
 
 void MMC5883MACompass::_performSet() {
     _writeReg(0x08, 0x08);
