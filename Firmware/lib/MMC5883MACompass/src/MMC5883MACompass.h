@@ -29,7 +29,8 @@ public:
     int  getAzimuth();                            // 0‑359°
     byte getBearing(int azimuth);                 // 16 方位索引
     void getDirection(char *buf, int azimuth);    // 『N』『E』…
-
+    void _performReset();
+    viod _performSet();
     /* ---------- 校准与滤波 ---------- */
     void calibrate();                             // 旋转 10 s 自动采集极值
     void setCalibration(int xmin,int xmax,int ymin,int ymax,int zmin,int zmax);
