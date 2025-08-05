@@ -66,6 +66,8 @@ private:
     void _performReset();
     void _applyCalibration();
     void _smoothing();
+    uint8_t _readStatus();
+    void    _burstRead(int16_t v[3]);
 };
 
 #endif // MMC5883MA_COMPASS_H
