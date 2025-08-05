@@ -1,280 +1,197 @@
-// 文件: MMC5883MACompass.cpp
+#include "Wire.h"
 #include "MMC5883MACompass.h"
-#include <Wire.h>
-#include <Arduino.h>
 
-constexpr byte REG_DATA_X_L = 0x00;   // 连续 6 字节 X_L…Z_H
+/*  为静态 constexpr 数组分配存储（必须有，否则链接报 undefined reference）  */
+constexpr char MMC5883MACompass::_bearings[16][3];
+
+/* ---------- 寄存器地址 (MMC5883MA) ---------- */
+constexpr byte REG_DATA_X_L = 0x00;   // X_L, X_H, Y_L, Y_H, Z_L, Z_H
 constexpr byte REG_STATUS   = 0x07;   // bit0 = Meas_Done
-constexpr byte REG_CTRL0    = 0x08;   // TM_M / SET / RESET / BW
+constexpr byte REG_CTRL0    = 0x08;   // TM_M / RESET / SET / BW
+constexpr byte REG_CTRL1    = 0x09;   // 备用，保持默认
 constexpr byte REG_CTRL2    = 0x0A;   // Soft‑reset
-constexpr byte REG_PRODUCT  = 0x2F;   // 0x0C
+constexpr byte REG_PRODUCT  = 0x2F;   // 固定 0x0C
 
-/* 控制位 */
+/* ---------- 位掩码 ---------- */
 constexpr byte CTRL0_TM_M   = 0x01;
 constexpr byte CTRL0_SET    = 0x08;
 constexpr byte CTRL0_RESET  = 0x10;
 
-// 16向罗盘方向字典
-const char MMC5883MACompass::_bearings[16][3] = {
-    {' ', ' ', 'N'}, {' ', 'N', 'N'}, {'N', 'N', 'E'}, {' ', 'N', 'E'},
-    {'E', 'N', 'E'}, {' ', 'E', ' '}, {'E', 'S', 'E'}, {' ', 'S', 'E'},
-    {'S', 'S', 'E'}, {' ', ' ', 'S'}, {'S', 'S', 'W'}, {' ', 'S', 'W'},
-    {'W', 'S', 'W'}, {' ', ' ', 'W'}, {'W', 'N', 'W'}, {' ', 'N', 'W'}
-};
-
+/* ======================================================================
+ *  类实现
+ * ====================================================================*/
 MMC5883MACompass::MMC5883MACompass() {}
 
+/* ---------- 初始化 ---------- */
 void MMC5883MACompass::init() {
-   Wire.begin();
-    // 软件复位
-    _writeReg(0x09, 0x80);
-    delay(5); // ≥5ms
+    Wire.begin();
 
-    // 设置输出数据率400Hz (CR1 BW=10)
-    _writeReg(0x09, 0x02);
+    /* Soft‑reset */
+    _writeReg(REG_CTRL2, 0x80);
+    delay(2);
 
-    // 设置连续测量模式 CR0 MODE=01
-    _writeReg(0x08, 0x01);
-
-    // —— 新增：开启连续测量频率 CM_Freq = 1 → 14Hz —— 
-    _writeReg(0x0A, 0x01);
-
-    // 执行去偏置脉冲
-    _performSet();
-    _performReset();
-}
-
-void MMC5883MACompass::setReset() {
-    _writeReg(0x09, 0x80);
-    delay(5);
-}
-
-void MMC5883MACompass::setADDR(byte addr) {
-    _ADDR = addr;
-}
-
-void MMC5883MACompass::setMode(byte mode, byte odr) {
-    mode &= 0x03;
-    odr  &= 0x0C;
-    _writeReg(0x09, odr);
-    _writeReg(0x08, mode);
-}
-
-void MMC5883MACompass::setMagneticDeclination(int degrees, uint8_t minutes) {
-    _magneticDeclinationDegrees = degrees + minutes / 60.0;
-}
-
-void MMC5883MACompass::setSmoothing(byte steps, bool adv) {
-    _smoothUse = true;
-    _smoothSteps = min(steps, (byte)10);
-    _smoothAdvanced = adv;
-}
-
-void MMC5883MACompass::calibrate() {
-  clearCalibration();
-  int calibrationData[3][2] = {{32767, -32768}, {32767, -32768}, {32767, -32768}};
-
-  // Prime the values
-  read();
-  int x = calibrationData[0][0] = calibrationData[0][1] = getX();
-  int y = calibrationData[1][0] = calibrationData[1][1] = getY();
-  int z = calibrationData[2][0] = calibrationData[2][1] = getZ();
-
-  unsigned long startTime = millis();
-  while ((millis() - startTime) < 10000) {
-    _performSet();
-    read();
-    int x_set = getX();
-    int y_set = getY();
-    int z_set = getZ();
-
-    _performReset();
-    read();
-    int x_reset = getX();
-    int y_reset = getY();
-    int z_reset = getZ();
-
-    // Average SET and RESET measurements to remove offset
-    x = (x_set + x_reset) / 2;
-    y = (y_set + y_reset) / 2;
-    z = (z_set + z_reset) / 2;
-
-    if (x < calibrationData[0][0]) calibrationData[0][0] = x;
-    if (x > calibrationData[0][1]) calibrationData[0][1] = x;
-    if (y < calibrationData[1][0]) calibrationData[1][0] = y;
-    if (y > calibrationData[1][1]) calibrationData[1][1] = y;
-    if (z < calibrationData[2][0]) calibrationData[2][0] = z;
-    if (z > calibrationData[2][1]) calibrationData[2][1] = z;
-
-    delay(10); // Allow sensor to stabilize
-  }
-
-  setCalibration(calibrationData[0][0], calibrationData[0][1],
-                 calibrationData[1][0], calibrationData[1][1],
-                 calibrationData[2][0], calibrationData[2][1]);
-}
-void MMC5883MACompass::clearCalibration() {
-  setCalibrationOffsets(0., 0., 0.);
-  setCalibrationScales(1., 1., 1.);
-}
-
-void MMC5883MACompass::setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max) {
-    _offset[0] = (x_max + x_min) / 2.0;
-    _offset[1] = (y_max + y_min) / 2.0;
-    _offset[2] = (z_max + z_min) / 2.0;
-    _scale[0]  = 2.0 / (x_max - x_min);
-    _scale[1]  = 2.0 / (y_max - y_min);
-    _scale[2]  = 2.0 / (z_max - z_min);
-}
-
-bool MMC5883MACompass::read() {
-    int16_t A[3], B[3];
-
-    // ① SET 去偏置
-    _performSet();
+    /* 先做一次 SET / RESET，保证磁芯退磁 */
+    _writeReg(REG_CTRL0, CTRL0_SET);
+    delayMicroseconds(50);
+    _writeReg(REG_CTRL0, CTRL0_RESET);
     delayMicroseconds(50);
 
-    // ② 单次测量 A
-    _writeReg(REG_CTRL0, CTRL0_TM_M);
-    while (!(_readStatus() & 0x01));
-    _burstRead(A);
-
-    // ③ RESET 去偏置
-    _performReset();
-    delayMicroseconds(50);
-
-    // ④ 单次测量 B
-    _writeReg(REG_CTRL0, CTRL0_TM_M);
-    while (!(_readStatus() & 0x01));
-    _burstRead(B);
-
-    // ⑤ (A+B)/2 去零偏
-    for (int i = 0; i < 3; ++i) {
-        _vRaw[i] = (A[i] + B[i]) / 2;
-    }
-
-    // 校准 & 滤波
-    _applyCalibration();
-    if (_smoothUse) _smoothing();
-
-    return true;
+    clearCalibration();
 }
 
+/* 修改 I²C 地址（如有必要） */
+void MMC5883MACompass::setADDR(byte b) { _ADDR = b; }
+
+/* 读产品 ID（MMC5883MA 固定 0x0C） */
 char MMC5883MACompass::chipID() {
     Wire.beginTransmission(_ADDR);
-    Wire.write((byte)0x07);
-    if (Wire.endTransmission() == 0) {
-        Wire.requestFrom(_ADDR, (byte)1);
-        return Wire.read();
-    }
-    return 0;
-}
-
-// 取代原有的 getAzimuth() 整个函数
-int MMC5883MACompass::getAzimuth() {
-    // 用 Y 在前、X 在后，标准 atan2(Y,X)
-    float heading = atan2(_vCalibrated[1], _vCalibrated[0]) * 180.0f / PI;
-
-    // 加上磁偏角
-    heading += _magneticDeclinationDegrees;
-
-    // 规范到 [0,360)
-    if (heading < 0)      heading += 360.0f;
-    else if (heading >= 360.0f) heading -= 360.0f;
-
-    return static_cast<int>(heading + 0.5f);
-}
-
-
-byte MMC5883MACompass::getBearing(int azimuth) {
-    return azimuth * 16 / 360;
-}
-
-void MMC5883MACompass::getDirection(char *buf, int azimuth) {
-    byte b = getBearing(azimuth);
-    memcpy(buf, _bearings[b], 3);
-    buf[3] = '\0';
-}
-uint8_t MMC5883MACompass::_readStatus() {
-    Wire.beginTransmission(_ADDR);
-    Wire.write(REG_STATUS);
-    Wire.endTransmission(false);
+    Wire.write(REG_PRODUCT);
+    if (Wire.endTransmission(false)) return 0;
     Wire.requestFrom(_ADDR, (byte)1);
     return Wire.read();
 }
 
-// 连续读 0x00–0x05，共 6 字节到 v[3]
-void MMC5883MACompass::_burstRead(int16_t v[3]) {
+/* ---------- 单次测量并读取数据 ---------- */
+void MMC5883MACompass::read() {
+    /* 1. 触发单次测量 */
+    _writeReg(REG_CTRL0, CTRL0_TM_M);
+
+    /* 2. 等待测量完成 (STATUS.bit0 == 1) */
+    uint8_t status;
+    do {
+        Wire.beginTransmission(_ADDR);
+        Wire.write(REG_STATUS);
+        Wire.endTransmission(false);
+        Wire.requestFrom(_ADDR, (byte)1);
+        status = Wire.read();
+    } while (!(status & 0x01));
+
+    /* 3. 读取 6 字节 XYZ 原始数据 */
     Wire.beginTransmission(_ADDR);
     Wire.write(REG_DATA_X_L);
     Wire.endTransmission(false);
-    if (Wire.requestFrom(_ADDR, (byte)6) == 6) {
+    Wire.requestFrom(_ADDR, (byte)6);
+
+    for (int i = 0; i < 3; ++i) {
+        uint16_t lo = Wire.read();
+        uint16_t hi = Wire.read();
+        uint16_t raw = (hi << 8) | lo;   // 0‑65535
+        _vRaw[i] = int(raw) - 32768;     // 转 ±32768（去掉 32768 偏移）
+    }
+
+    _applyCalibration();
+
+    if (_useSmooth) _smoothing();
+}
+
+/* ---------- 校准与偏角 ---------- */
+void MMC5883MACompass::setMagneticDeclination(int deg, uint8_t minutes) {
+    _magDeclDeg = deg + minutes / 60.0f;
+}
+
+void MMC5883MACompass::setSmoothing(byte steps, bool adv) {
+    _useSmooth = true;
+    _smoothN   = (steps < 2) ? 2 : (steps > 10 ? 10 : steps);
+    _smoothAdv = adv;
+}
+
+void MMC5883MACompass::calibrate() {
+    clearCalibration();
+    long minv[3] = { 65000, 65000, 65000 };
+    long maxv[3] = {-65000,-65000,-65000};
+
+    unsigned long t0 = millis();
+    while (millis() - t0 < 10000) {  // 旋转 10 秒
+        read();
         for (int i = 0; i < 3; ++i) {
-            uint8_t lo = Wire.read();
-            uint8_t hi = Wire.read();
-            v[i] = (int16_t)(lo | (hi << 8));
+            if (_vRaw[i] < minv[i]) minv[i] = _vRaw[i];
+            if (_vRaw[i] > maxv[i]) maxv[i] = _vRaw[i];
         }
     }
-}
-float MMC5883MACompass::getCalibrationOffset(byte idx) { return _offset[idx]; }
-float MMC5883MACompass::getCalibrationScale(byte idx)  { return _scale[idx]; }
-int   MMC5883MACompass::getX()  { return _vCalibrated[0]; }
-int   MMC5883MACompass::getY()  { return _vCalibrated[1]; }
-int   MMC5883MACompass::getZ()  { return _vCalibrated[2]; }
-
-void MMC5883MACompass::_writeReg(byte r, byte v) {
-    Wire.beginTransmission(_ADDR);
-    Wire.write(r);
-    Wire.write(v);
-    Wire.endTransmission();
-}
-void MMC5883MACompass::setCalibrationOffsets(float x_offset, float y_offset, float z_offset) {
-  _offset[0] = x_offset;
-  _offset[1] = y_offset;
-  _offset[2] = z_offset;
+    setCalibration(minv[0], maxv[0],
+                   minv[1], maxv[1],
+                   minv[2], maxv[2]);
 }
 
-/**
- * Set Calibration Scales
- */
-void MMC5883MACompass::setCalibrationScales(float x_scale, float y_scale, float z_scale) {
-  _scale[0] = x_scale;
-  _scale[1] = y_scale;
-  _scale[2] = z_scale;
+void MMC5883MACompass::setCalibration(int xmin,int xmax,int ymin,int ymax,int zmin,int zmax){
+    setCalibrationOffsets( (xmin + xmax) / 2.0f,
+                           (ymin + ymax) / 2.0f,
+                           (zmin + zmax) / 2.0f );
+    float dx = (xmax - xmin) / 2.0f;
+    float dy = (ymax - ymin) / 2.0f;
+    float dz = (zmax - zmin) / 2.0f;
+    float avg = (dx + dy + dz) / 3.0f;
+    setCalibrationScales( avg / dx, avg / dy, avg / dz );
 }
 
-void MMC5883MACompass::_performSet() {
-    _writeReg(0x08, 0x08);
-    delay(1);
+void MMC5883MACompass::setCalibrationOffsets(float x,float y,float z){
+    _offset[0]=x; _offset[1]=y; _offset[2]=z;
+}
+void MMC5883MACompass::setCalibrationScales (float xs,float ys,float zs){
+    _scale[0]=xs; _scale[1]=ys; _scale[2]=zs;
 }
 
-void MMC5883MACompass::_performReset() {
-    _writeReg(0x08, 0x10);
-    delay(1);
+float MMC5883MACompass::getCalibrationOffset(uint8_t i){ return _offset[i]; }
+float MMC5883MACompass::getCalibrationScale (uint8_t i){ return _scale [i]; }
+void  MMC5883MACompass::clearCalibration(){
+    setCalibrationOffsets(0,0,0);
+    setCalibrationScales (1,1,1);
 }
 
-void MMC5883MACompass::_applyCalibration() {
-    _vCalibrated[0] = (_vRaw[0] - (int)_offset[0]) * _scale[0];
-    _vCalibrated[1] = (_vRaw[1] - (int)_offset[1]) * _scale[1];
-    _vCalibrated[2] = (_vRaw[2] - (int)_offset[2]) * _scale[2];
-}
+/* ---------- 平滑处理 ---------- */
+void MMC5883MACompass::_smoothing(){
+    if (_vScan >= _smoothN) _vScan = 0;
+    for(int i=0;i<3;++i){
+        _vTotals[i] -= _vHist[_vScan][i];
+        _vHist  [_vScan][i] = _vCal[i];
+        _vTotals[i] += _vHist[_vScan][i];
 
-void MMC5883MACompass::_smoothing() {
-    if (_vScan >= _smoothSteps) _vScan = 0;
-    for (int i = 0; i < 3; i++) _vHistory[_vScan][i] = _vCalibrated[i];
-    _vScan++;
-    memset(_vTotals, 0, sizeof(_vTotals));
-    for (int j = 0; j < _smoothSteps; j++)
-        for (int i = 0; i < 3; i++) _vTotals[i] += _vHistory[j][i];
-    for (int i = 0; i < 3; i++) {
-        byte mx = 0, mn = 0;
-        for (byte j = 1; j < _smoothSteps; j++) {
-            if (_vHistory[j][i] > _vHistory[mx][i]) mx = j;
-            if (_vHistory[j][i] < _vHistory[mn][i]) mn = j;
+        if (_smoothAdv) {
+            int min = _vHist[0][i], max = min;
+            for (int j=1;j<_smoothN;++j){
+                min = _vHist[j][i] < min ? _vHist[j][i] : min;
+                max = _vHist[j][i] > max ? _vHist[j][i] : max;
+            }
+            _vSmooth[i] = (_vTotals[i] - min - max) / (_smoothN - 2);
+        } else {
+            _vSmooth[i] = _vTotals[i] / _smoothN;
         }
-        if (_smoothAdvanced && _smoothSteps > 2)
-            _vSmooth[i] = (_vTotals[i] - _vHistory[mx][i] - _vHistory[mn][i]) / (_smoothSteps - 2);
-        else
-            _vSmooth[i] = _vTotals[i] / _smoothSteps;
+    }
+    ++_vScan;
+}
+
+/* ---------- 校准应用 ---------- */
+void MMC5883MACompass::_applyCalibration(){
+    for(int i=0;i<3;++i){
+        _vCal[i] = (_vRaw[i] - _offset[i]) * _scale[i];
     }
 }
+
+/* ---------- 数据接口 ---------- */
+int MMC5883MACompass::_get(int i){
+    return _useSmooth ? _vSmooth[i] : _vCal[i];
+}
+int MMC5883MACompass::getX(){ return _get(0); }
+int MMC5883MACompass::getY(){ return _get(1); }
+int MMC5883MACompass::getZ(){ return _get(2); }
+
+int MMC5883MACompass::getAzimuth(){
+    float ang = atan2(getY(), getX()) * 180.0f / PI + _magDeclDeg;
+    if (ang < 0)  ang += 360;
+    return int(ang + 0.5f) % 360;
+}
+
+byte MMC5883MACompass::getBearing(int az){
+    int idx = int((az < 0 ? az + 360 : az) / 22.5f + 0.5f) & 0x0F;
+    return idx;
+}
+
+void MMC5883MACompass::getDirection(char *buf, int az){
+    byte idx = getBearing(az);
+    buf[0] = _bearings[idx][0];
+    buf[1] = _bearings[idx][1];
+    buf[2] = _bearings[idx][2];
+}
+
+/* ---------- 私有寄存器写助手 ---------- */
+void MMC5883MACompass
