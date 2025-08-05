@@ -25,7 +25,7 @@ public:
     /** 直接设置校准范围 */
     void setCalibration(int x_min, int x_max, int y_min, int y_max, int z_min, int z_max);
     /** 读取最新数据并更新 _vCalibrated */
-    void read();
+    bool read();
     /** 读取芯片ID */
     char chipID();
     /** 获取方位角（0-359） */
