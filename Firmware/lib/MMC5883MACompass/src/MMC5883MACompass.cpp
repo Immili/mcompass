@@ -185,9 +185,15 @@ int MMC5883MACompass::getY(){return _get(1);}
 int MMC5883MACompass::getZ(){return _get(2);} 
 
 int MMC5883MACompass::getAzimuth(){
-    float ang=atan2(getX(),getY())*180.0f/PI+_magDeclDeg;
-    if(ang<0) ang+=360;
-    return int(ang+0.5f)%360;
+  int MMC5883MACompass::getAzimuth() {
+    static int lastAz = 0;
+    // 10 mG ≈ 40 LSB
+    if (abs(getX()) < 40) return lastAz;
+    float ang = atan2(-getX(), getY()) * 180.0f / PI + _magDeclDeg;
+    if (ang < 0) ang += 360;
+    lastAz = int(ang + 0.5f) % 360;
+    return lastAz;
+}
 }
 
 byte MMC5883MACompass::getBearing(int az){return byte(((az+11)/22)%16);} 
