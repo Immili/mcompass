@@ -185,7 +185,7 @@ int MMC5883MACompass::getY(){return _get(1);}
 int MMC5883MACompass::getZ(){return _get(2);} 
 
 int MMC5883MACompass::getAzimuth(){
-  int MMC5883MACompass::getAzimuth() {
+  int MMC5883MACompass::getAzimuth(){
     static int lastAz = 0;
     // 10 mG ≈ 40 LSB
     if (abs(getX()) < 40) return lastAz;
