@@ -146,7 +146,7 @@ int MMC5883MACompass::getY(){return _get(1);}
 int MMC5883MACompass::getZ(){return _get(2);} 
 
 int MMC5883MACompass::getAzimuth(){
-    float ang=atan2(getY(),getX())*180.0f/PI+_magDeclDeg;
+    float ang=360-(atan2(getY(),getX())*180.0f/PI+_magDeclDeg);
     if(ang<0) ang+=360;
     return int(ang+0.5f)%360;
 }
