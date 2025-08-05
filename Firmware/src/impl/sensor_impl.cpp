@@ -134,9 +134,9 @@ int sensor::getAzimuth() {
     azimuth = 360 - azimuth; // 将方位角转换为0-360度范围
   }
     case SensorModel::MMC5883MA: {
-    azimuth = 180 - azimuth; // 将方位角转换为0-360度范围
-    if(azimuth<0){
-      azimuth=360+azimuth;
+    azimuth = azimuth+180 ; // 将方位角转换为0-360度范围
+    if(azimuth>360){
+      azimuth= azimuth - 360;
       }
   }
   default:
