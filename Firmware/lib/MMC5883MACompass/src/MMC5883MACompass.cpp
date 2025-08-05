@@ -78,7 +78,18 @@ void MMC5883MACompass::read(){
 void MMC5883MACompass::setMagneticDeclination(int d,uint8_t m){
     _magDeclDeg=d+m/60.0f;
 }
+void MMC5883MACompass::_performSet() {
+  _writeReg(0x08, 0x08); // SET bit
+  delayMicroseconds(100); // Short delay for SET action
+}
 
+/**
+ * Perform RESET Action
+ */
+void MMC5883MACompass::_performReset() {
+  _writeReg(0x08, 0x10); // RESET bit
+  delayMicroseconds(100); // Short delay for RESET action
+}
 void MMC5883MACompass::setSmoothing(byte n,bool adv){
     _useSmooth=true;
     _smoothN=n<2?2:(n>10?10:n);
