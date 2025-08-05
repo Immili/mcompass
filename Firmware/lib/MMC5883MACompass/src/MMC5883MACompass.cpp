@@ -127,29 +127,37 @@ void MMC5883MACompass::setCalibration(int x_min, int x_max, int y_min, int y_max
     _scale[2]  = 2.0 / (z_max - z_min);
 }
 
-void MMC5883MACompass::read() {
-    // —— 1. 等待一次测量完成 —— 
-    uint8_t status = 0;
-    do {
-        Wire.beginTransmission(_ADDR);
-        Wire.write(REG_STATUS);
-        Wire.endTransmission();
-        Wire.requestFrom(_ADDR, (byte)1);
-        if (Wire.available()) {
-            status = Wire.read();
-        }
-    } while (!(status & 0x01));
+bool MMC5883MACompass::read() {
+    int16_t A[3], B[3];
 
-    // —— 2. 读取 0x00–0x05 的 6 字节原始磁场数据 —— 
-    Wire.beginTransmission(_ADDR);
-    Wire.write(REG_DATA_X_L);
-    if (Wire.endTransmission() == 0 && Wire.requestFrom(_ADDR, (byte)6) == 6) {
-        _vRaw[0] = (int16_t)(Wire.read() | (Wire.read() << 8));
-        _vRaw[1] = (int16_t)(Wire.read() | (Wire.read() << 8));
-        _vRaw[2] = (int16_t)(Wire.read() | (Wire.read() << 8));
-        _applyCalibration();
-        if (_smoothUse) _smoothing();
+    // ① SET 去偏置
+    _performSet();
+    delayMicroseconds(50);
+
+    // ② 单次测量 A
+    _writeReg(REG_CTRL0, CTRL0_TM_M);
+    while (!(_readStatus() & 0x01));
+    _burstRead(A);
+
+    // ③ RESET 去偏置
+    _performReset();
+    delayMicroseconds(50);
+
+    // ④ 单次测量 B
+    _writeReg(REG_CTRL0, CTRL0_TM_M);
+    while (!(_readStatus() & 0x01));
+    _burstRead(B);
+
+    // ⑤ (A+B)/2 去零偏
+    for (int i = 0; i < 3; ++i) {
+        _vRaw[i] = (A[i] + B[i]) / 2;
     }
+
+    // 校准 & 滤波
+    _applyCalibration();
+    if (_smoothUse) _smoothing();
+
+    return true;
 }
 
 char MMC5883MACompass::chipID() {
@@ -187,7 +195,27 @@ void MMC5883MACompass::getDirection(char *buf, int azimuth) {
     memcpy(buf, _bearings[b], 3);
     buf[3] = '\0';
 }
+uint8_t MMC5883MACompass::_readStatus() {
+    Wire.beginTransmission(_ADDR);
+    Wire.write(REG_STATUS);
+    Wire.endTransmission(false);
+    Wire.requestFrom(_ADDR, (byte)1);
+    return Wire.read();
+}
 
+// 连续读 0x00–0x05，共 6 字节到 v[3]
+void MMC5883MACompass::_burstRead(int16_t v[3]) {
+    Wire.beginTransmission(_ADDR);
+    Wire.write(REG_DATA_X_L);
+    Wire.endTransmission(false);
+    if (Wire.requestFrom(_ADDR, (byte)6) == 6) {
+        for (int i = 0; i < 3; ++i) {
+            uint8_t lo = Wire.read();
+            uint8_t hi = Wire.read();
+            v[i] = (int16_t)(lo | (hi << 8));
+        }
+    }
+}
 float MMC5883MACompass::getCalibrationOffset(byte idx) { return _offset[idx]; }
 float MMC5883MACompass::getCalibrationScale(byte idx)  { return _scale[idx]; }
 int   MMC5883MACompass::getX()  { return _vCalibrated[0]; }
