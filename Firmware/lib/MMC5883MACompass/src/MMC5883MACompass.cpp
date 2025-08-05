@@ -162,15 +162,21 @@ char MMC5883MACompass::chipID() {
     return 0;
 }
 
+// 取代原有的 getAzimuth() 整个函数
 int MMC5883MACompass::getAzimuth() {
-    float heading = atan2(_vCalibrated[0], -_vCalibrated[1]) * 180.0 / PI;
+    // 用 Y 在前、X 在后，标准 atan2(Y,X)
+    float heading = atan2(_vCalibrated[1], _vCalibrated[0]) * 180.0f / PI;
+
+    // 加上磁偏角
     heading += _magneticDeclinationDegrees;
-    if (heading < 0) heading += 360;
-    else if (heading >= 360) heading -= 360;
-    heading = 360 - heading + 180;
-    if (heading >= 360) heading -= 360;
-    return (int)heading;
+
+    // 规范到 [0,360)
+    if (heading < 0)      heading += 360.0f;
+    else if (heading >= 360.0f) heading -= 360.0f;
+
+    return static_cast<int>(heading + 0.5f);
 }
+
 
 byte MMC5883MACompass::getBearing(int azimuth) {
     return azimuth * 16 / 360;
