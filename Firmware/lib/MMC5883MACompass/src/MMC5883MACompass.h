@@ -40,6 +40,8 @@ public:
     float getCalibrationScale(byte idx);
     /** 获取X/Y/Z轴当前值 */
     void clearCalibration();
+    void setCalibrationOffsets(float x_offset, float y_offset, float z_offset);
+    void setCalibrationScales(float x_scale, float y_scale, float z_scale);
     int getX();
     int getY();
     int getZ();
