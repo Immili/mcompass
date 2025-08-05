@@ -133,6 +133,9 @@ int sensor::getAzimuth() {
   case SensorModel::QMC5883L: {
     azimuth = 360 - azimuth; // 将方位角转换为0-360度范围
   }
+    case SensorModel::MMC5883MA: {
+    azimuth = 360 - azimuth; // 将方位角转换为0-360度范围
+  }
   default:
     break;
   }
