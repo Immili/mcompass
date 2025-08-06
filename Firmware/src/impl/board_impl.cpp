@@ -79,6 +79,7 @@ void board::init() {
             ESP_ERROR_CHECK(esp_event_post_to(context.getEventLoop(),
                                               MCOMPASS_EVENT, 0, &event,
                                               sizeof(event), 0));
+            ESP_LOGI(TAG, "RAW  TX  Az:%d",azimuth);
           },
       .arg = nullptr,
       .dispatch_method = ESP_TIMER_TASK,
