@@ -131,6 +131,7 @@ void dispatcher(void *handler_arg, esp_event_base_t base, int32_t id,
       break;
     }
     case WorkType::SOUTH: {
+      ESP_LOGI(TAG, "RAW  RX  Az:%d",azimuth);
       static int lastAzimuth = 0;
       // 指南针模式下忽略非订阅的源,否则会受到随机数据影响
       if (context.getSubscribeSource() != evt->source)
