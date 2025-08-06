@@ -127,6 +127,7 @@ int sensor::getAzimuth() {
     if (azimuth >= 360) {
       azimuth -= 360;
     }
+    azimuth=360-azimuth;
     break;
   }
   case SensorModel::QMC5883L: {
